@@ -9,6 +9,15 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+// Suppress the console window that Windows opens for child processes.
+fn no_window(_cmd: &mut Command) {
+    #[cfg(windows)]
+    _cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+}
+
 const MAX_LOG_LINES: usize = 1000;
 
 // Release asset name per platform
@@ -266,12 +275,12 @@ fn run_proxhy_self_update(
         *proxhy_updating.lock().unwrap() = true;
         push_log(&log, "[gui] Running: proxhy self update...", &ctx);
         let binary = proxhy_binary_path();
-        match Command::new(&binary)
-            .args(["self", "update"])
+        let mut cmd = Command::new(&binary);
+        cmd.args(["self", "update"])
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
+            .stderr(Stdio::piped());
+        no_window(&mut cmd);
+        match cmd.spawn() {
             Ok(mut child) => {
                 if let Some(stdout) = child.stdout.take() {
                     let log2 = Arc::clone(&log);
@@ -389,11 +398,10 @@ impl App {
             &format!("[gui] Starting {}...", binary.display()),
             &self.ctx,
         );
-        match Command::new(&binary)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-        {
+        let mut cmd = Command::new(&binary);
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        no_window(&mut cmd);
+        match cmd.spawn() {
             Ok(mut child) => {
                 if let Some(stdout) = child.stdout.take() {
                     let log = Arc::clone(&self.log);
