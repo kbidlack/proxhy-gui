@@ -14,18 +14,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            bin: proxhy-gui
-            archive: proxhy-gui-x86_64-unknown-linux-gnu.tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            bin: proxhy-gui
-            archive: proxhy-gui-aarch64-apple-darwin.tar.gz
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            bin: proxhy-gui.exe
-            archive: proxhy-gui-x86_64-pc-windows-msvc.zip
 
     runs-on: ${{ matrix.os }}
 
@@ -61,22 +55,104 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Package (Unix)
-        if: runner.os != 'Windows'
+      - name: Package macOS
+        if: runner.os == 'macOS'
         run: |
-          tar -czf ${{ matrix.archive }} \
-            -C target/${{ matrix.target }}/release \
-            ${{ matrix.bin }}
+          mkdir -p Proxhy.app/Contents/MacOS
+          cp target/${{ matrix.target }}/release/proxhy-gui \
+             Proxhy.app/Contents/MacOS/proxhy-gui
+          cat > Proxhy.app/Contents/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>   <string>proxhy-gui</string>
+            <key>CFBundleIdentifier</key>   <string>com.kbidlack.proxhy</string>
+            <key>CFBundleName</key>         <string>Proxhy</string>
+            <key>CFBundlePackageType</key>  <string>APPL</string>
+            <key>CFBundleShortVersionString</key> <string>${{ github.ref_name }}</string>
+            <key>NSHighResolutionCapable</key>    <true/>
+            <key>NSPrincipalClass</key>     <string>NSApplication</string>
+          </dict>
+          </plist>
+          EOF
+          zip -r Proxhy.zip Proxhy.app
+          tar -czf proxhy-gui-${{ matrix.target }}.tar.gz \
+            -C target/${{ matrix.target }}/release proxhy-gui
 
-      - name: Package (Windows)
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+
+          mkdir -p AppDir/usr/bin
+          cp target/${{ matrix.target }}/release/proxhy-gui AppDir/usr/bin/
+
+          cat > AppDir/AppRun << 'APPRUN'
+          #!/bin/sh
+          exec "$(dirname "$0")/usr/bin/proxhy-gui" "$@"
+          APPRUN
+          chmod +x AppDir/AppRun
+
+          cat > AppDir/proxhy-gui.desktop << 'DESKTOP'
+          [Desktop Entry]
+          Name=Proxhy
+          Exec=proxhy-gui
+          Icon=proxhy-gui
+          Type=Application
+          Categories=Network;
+          DESKTOP
+
+          python3 -c "
+          import struct, zlib
+          def chunk(t, d):
+              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t+d)&0xffffffff)
+          row = b'\x00' + bytes([0x44,0x77,0xcc]*64)
+          data = zlib.compress(row * 64)
+          png = (b'\x89PNG\r\n\x1a\n'
+              + chunk(b'IHDR', struct.pack('>IIBBBBB', 64, 64, 8, 2, 0, 0, 0))
+              + chunk(b'IDAT', data)
+              + chunk(b'IEND', b''))
+          open('AppDir/proxhy-gui.png','wb').write(png)
+          "
+
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir Proxhy.AppImage
+          tar -czf proxhy-gui-${{ matrix.target }}.tar.gz \
+            -C target/${{ matrix.target }}/release proxhy-gui
+
+      - name: Package Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          cp target\${{ matrix.target }}\release\proxhy-gui.exe Proxhy.exe
           Compress-Archive `
-            -Path target\${{ matrix.target }}\release\${{ matrix.bin }} `
-            -DestinationPath ${{ matrix.archive }}
+            -Path target\${{ matrix.target }}\release\proxhy-gui.exe `
+            -DestinationPath proxhy-gui-${{ matrix.target }}.zip
 
-      - name: Upload to release
+      - name: Upload macOS
+        if: runner.os == 'macOS'
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.archive }}
+          files: |
+            Proxhy.zip
+            proxhy-gui-${{ matrix.target }}.tar.gz
+
+      - name: Upload Linux
+        if: runner.os == 'Linux'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Proxhy.AppImage
+            proxhy-gui-${{ matrix.target }}.tar.gz
+
+      - name: Upload Windows
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Proxhy.exe
+            proxhy-gui-${{ matrix.target }}.zip
