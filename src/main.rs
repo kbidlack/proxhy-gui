@@ -301,7 +301,8 @@ fn run_proxhy_self_update(
                     });
                 }
                 match child.wait() {
-                    Ok(s) => push_log(&log, &format!("[gui] self update finished ({s})"), &ctx),
+                    Ok(s) if s.success() => {}
+                    Ok(s) => push_log(&log, &format!("[gui] self update failed ({s})"), &ctx),
                     Err(e) => push_log(&log, &format!("[gui] self update error: {e}"), &ctx),
                 }
             }
