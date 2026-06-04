@@ -33,21 +33,6 @@ fn proxhy_binary_path() -> PathBuf {
     proxhy_data_dir().join(PROXHY_BIN_NAME)
 }
 
-fn proxhy_version_path() -> PathBuf {
-    proxhy_data_dir().join("proxhy_version.txt")
-}
-
-fn read_installed_version() -> Option<String> {
-    std::fs::read_to_string(proxhy_version_path())
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-}
-
-fn write_installed_version(version: &str) {
-    let _ = std::fs::write(proxhy_version_path(), version);
-}
-
 // --- log types ---
 
 #[derive(Clone, Debug, PartialEq)]
@@ -218,7 +203,6 @@ fn download_proxhy_binary(
 
 #[derive(Default, Clone)]
 struct UpdateState {
-    proxhy_available: Option<String>,
     gui_available: Option<String>,
     installing: bool,
     error: Option<String>,
@@ -238,7 +222,7 @@ fn gui_updater() -> Result<Box<dyn ReleaseUpdate>, self_update::errors::Error> {
 
 fn spawn_ensure_binary(
     log: Arc<Mutex<VecDeque<LogLine>>>,
-    state: Arc<Mutex<UpdateState>>,
+    proxhy_updating: Arc<Mutex<bool>>,
     ctx: egui::Context,
 ) {
     if proxhy_binary_path().exists() {
@@ -246,41 +230,13 @@ fn spawn_ensure_binary(
     }
     thread::spawn(move || {
         push_log(&log, "[gui] proxhy not found — downloading...", &ctx);
-        state.lock().unwrap().installing = true;
-        let result = fetch_latest_proxhy_version().and_then(|version| {
-            download_proxhy_binary(&version, &log, &ctx)?;
-            write_installed_version(&version);
-            Ok(())
-        });
-        let mut s = state.lock().unwrap();
-        s.installing = false;
+        *proxhy_updating.lock().unwrap() = true;
+        let result = fetch_latest_proxhy_version()
+            .and_then(|version| download_proxhy_binary(&version, &log, &ctx));
+        *proxhy_updating.lock().unwrap() = false;
         match result {
-            Ok(()) => {
-                drop(s);
-                push_log(&log, "[gui] proxhy ready.", &ctx);
-            }
-            Err(e) => {
-                s.error = Some(e.clone());
-                drop(s);
-                push_log(&log, &format!("[gui] Download failed: {e}"), &ctx);
-            }
-        }
-    });
-}
-
-fn spawn_proxhy_update_check(state: Arc<Mutex<UpdateState>>) {
-    // Skip if binary not present — first-run download handles the initial install.
-    if !proxhy_binary_path().exists() {
-        return;
-    }
-    thread::spawn(move || match fetch_latest_proxhy_version() {
-        Ok(latest) => {
-            if read_installed_version().as_deref() != Some(&*latest) {
-                state.lock().unwrap().proxhy_available = Some(latest);
-            }
-        }
-        Err(e) => {
-            state.lock().unwrap().error = Some(format!("proxhy update check: {e}"));
+            Ok(()) => push_log(&log, "[gui] proxhy ready.", &ctx),
+            Err(e) => push_log(&log, &format!("[gui] Download failed: {e}"), &ctx),
         }
     });
 }
@@ -299,37 +255,54 @@ fn spawn_gui_update_check(state: Arc<Mutex<UpdateState>>) {
     );
 }
 
-// --- update application ---
+// --- proxhy self update ---
 
-fn apply_proxhy_update(
-    version: String,
-    state: Arc<Mutex<UpdateState>>,
+fn run_proxhy_self_update(
+    proxhy_updating: Arc<Mutex<bool>>,
     log: Arc<Mutex<VecDeque<LogLine>>>,
     ctx: egui::Context,
 ) {
     thread::spawn(move || {
-        state.lock().unwrap().installing = true;
-        push_log(
-            &log,
-            &format!("[gui] Updating proxhy to {version}..."),
-            &ctx,
-        );
-        match download_proxhy_binary(&version, &log, &ctx) {
-            Ok(()) => {
-                write_installed_version(&version);
-                let mut s = state.lock().unwrap();
-                s.proxhy_available = None;
-                s.installing = false;
+        *proxhy_updating.lock().unwrap() = true;
+        push_log(&log, "[gui] Running: proxhy self update...", &ctx);
+        let binary = proxhy_binary_path();
+        match Command::new(&binary)
+            .args(["self", "update"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(mut child) => {
+                if let Some(stdout) = child.stdout.take() {
+                    let log2 = Arc::clone(&log);
+                    let ctx2 = ctx.clone();
+                    thread::spawn(move || {
+                        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                            push_log(&log2, &line, &ctx2);
+                        }
+                    });
+                }
+                if let Some(stderr) = child.stderr.take() {
+                    let log2 = Arc::clone(&log);
+                    let ctx2 = ctx.clone();
+                    thread::spawn(move || {
+                        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                            push_log(&log2, &line, &ctx2);
+                        }
+                    });
+                }
+                match child.wait() {
+                    Ok(s) => push_log(&log, &format!("[gui] self update finished ({s})"), &ctx),
+                    Err(e) => push_log(&log, &format!("[gui] self update error: {e}"), &ctx),
+                }
             }
-            Err(e) => {
-                push_log(&log, &format!("[gui] proxhy update failed: {e}"), &ctx);
-                let mut s = state.lock().unwrap();
-                s.error = Some(e);
-                s.installing = false;
-            }
+            Err(e) => push_log(&log, &format!("[gui] Failed to run self update: {e}"), &ctx),
         }
+        *proxhy_updating.lock().unwrap() = false;
     });
 }
+
+// --- GUI update ---
 
 fn apply_gui_update(
     state: Arc<Mutex<UpdateState>>,
@@ -338,56 +311,6 @@ fn apply_gui_update(
 ) {
     thread::spawn(move || {
         state.lock().unwrap().installing = true;
-        push_log(&log, "[gui] Updating proxhy-gui...", &ctx);
-        let result = gui_updater().and_then(|u| u.update());
-        let mut s = state.lock().unwrap();
-        s.installing = false;
-        match result {
-            Ok(_) => {
-                s.gui_available = None;
-                drop(s);
-                push_log(&log, "[gui] GUI updated — please restart.", &ctx);
-            }
-            Err(e) => {
-                s.error = Some(e.to_string());
-                drop(s);
-                push_log(&log, &format!("[gui] GUI update failed: {e}"), &ctx);
-            }
-        }
-    });
-}
-
-fn apply_both_updates(
-    proxhy_version: String,
-    state: Arc<Mutex<UpdateState>>,
-    log: Arc<Mutex<VecDeque<LogLine>>>,
-    ctx: egui::Context,
-) {
-    thread::spawn(move || {
-        state.lock().unwrap().installing = true;
-
-        // Step 1: update proxhy binary
-        push_log(
-            &log,
-            &format!("[gui] Updating proxhy to {proxhy_version}..."),
-            &ctx,
-        );
-        match download_proxhy_binary(&proxhy_version, &log, &ctx) {
-            Ok(()) => {
-                write_installed_version(&proxhy_version);
-                state.lock().unwrap().proxhy_available = None;
-                push_log(&log, "[gui] proxhy updated.", &ctx);
-            }
-            Err(e) => {
-                push_log(&log, &format!("[gui] proxhy update failed: {e}"), &ctx);
-                let mut s = state.lock().unwrap();
-                s.error = Some(e);
-                s.installing = false;
-                return;
-            }
-        }
-
-        // Step 2: replace GUI binary
         push_log(&log, "[gui] Updating proxhy-gui...", &ctx);
         let result = gui_updater().and_then(|u| u.update());
         let mut s = state.lock().unwrap();
@@ -425,6 +348,7 @@ struct App {
     auto_scroll: bool,
     filter: LogFilter,
     update_state: Arc<Mutex<UpdateState>>,
+    proxhy_updating: Arc<Mutex<bool>>,
     ctx: egui::Context,
 }
 
@@ -432,6 +356,7 @@ impl App {
     fn new(
         cc: &eframe::CreationContext,
         update_state: Arc<Mutex<UpdateState>>,
+        proxhy_updating: Arc<Mutex<bool>>,
         log: Arc<Mutex<VecDeque<LogLine>>>,
     ) -> Self {
         Self {
@@ -440,6 +365,7 @@ impl App {
             auto_scroll: true,
             filter: LogFilter::All,
             update_state,
+            proxhy_updating,
             ctx: cc.egui_ctx.clone(),
         }
     }
@@ -530,74 +456,34 @@ impl App {
             }
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
+        if *self.proxhy_updating.lock().unwrap() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
     }
 
     fn show_update_banner(&mut self, ctx: &egui::Context) {
         let state = self.update_state.lock().unwrap().clone();
-        let has_proxhy = state.proxhy_available.is_some();
-        let has_gui = state.gui_available.is_some();
-        if !has_proxhy && !has_gui && state.error.is_none() {
+        if state.gui_available.is_none() && state.error.is_none() {
             return;
         }
-
         egui::TopBottomPanel::top("update_banner").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                match (&state.proxhy_available, &state.gui_available) {
-                    (Some(pv), Some(gv)) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(255, 200, 50),
-                            format!("⬆ Updates: proxhy {pv}  •  GUI {gv}"),
+                if let Some(ref gv) = state.gui_available {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(255, 200, 50),
+                        format!("⬆ GUI update available: {gv}"),
+                    );
+                    if state.installing {
+                        ui.spinner();
+                        ui.label("Installing...");
+                    } else if ui.button("Update GUI & Restart").clicked() {
+                        apply_gui_update(
+                            Arc::clone(&self.update_state),
+                            Arc::clone(&self.log),
+                            self.ctx.clone(),
                         );
-                        if state.installing {
-                            ui.spinner();
-                            ui.label("Installing...");
-                        } else if ui.button("Update & Restart").clicked() {
-                            let pv = pv.clone();
-                            apply_both_updates(
-                                pv,
-                                Arc::clone(&self.update_state),
-                                Arc::clone(&self.log),
-                                self.ctx.clone(),
-                            );
-                        }
                     }
-                    (Some(pv), None) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(255, 200, 50),
-                            format!("⬆ proxhy update: {pv}"),
-                        );
-                        if state.installing {
-                            ui.spinner();
-                            ui.label("Installing...");
-                        } else if ui.button("Update proxhy").clicked() {
-                            let pv = pv.clone();
-                            apply_proxhy_update(
-                                pv,
-                                Arc::clone(&self.update_state),
-                                Arc::clone(&self.log),
-                                self.ctx.clone(),
-                            );
-                        }
-                    }
-                    (None, Some(gv)) => {
-                        ui.colored_label(
-                            egui::Color32::from_rgb(255, 200, 50),
-                            format!("⬆ GUI update: {gv}"),
-                        );
-                        if state.installing {
-                            ui.spinner();
-                            ui.label("Installing...");
-                        } else if ui.button("Update GUI & Restart").clicked() {
-                            apply_gui_update(
-                                Arc::clone(&self.update_state),
-                                Arc::clone(&self.log),
-                                self.ctx.clone(),
-                            );
-                        }
-                    }
-                    (None, None) => {}
                 }
-
                 if let Some(ref err) = state.error {
                     ui.colored_label(egui::Color32::RED, err);
                 }
@@ -623,6 +509,26 @@ impl App {
                             self.start();
                         }
                         ui.colored_label(egui::Color32::GRAY, "● Stopped");
+                    }
+
+                    ui.separator();
+
+                    let updating = *self.proxhy_updating.lock().unwrap();
+                    if ui
+                        .add_enabled(
+                            !self.running() && !updating,
+                            egui::Button::new("↺ Update proxhy"),
+                        )
+                        .clicked()
+                    {
+                        run_proxhy_self_update(
+                            Arc::clone(&self.proxhy_updating),
+                            Arc::clone(&self.log),
+                            self.ctx.clone(),
+                        );
+                    }
+                    if updating {
+                        ui.spinner();
                     }
 
                     ui.separator();
@@ -710,6 +616,7 @@ impl eframe::App for App {
 fn main() -> eframe::Result {
     let state = Arc::new(Mutex::new(UpdateState::default()));
     let log = Arc::new(Mutex::new(VecDeque::with_capacity(MAX_LOG_LINES)));
+    let proxhy_updating = Arc::new(Mutex::new(false));
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -723,10 +630,9 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             let ctx = cc.egui_ctx.clone();
-            spawn_ensure_binary(Arc::clone(&log), Arc::clone(&state), ctx);
-            spawn_proxhy_update_check(Arc::clone(&state));
+            spawn_ensure_binary(Arc::clone(&log), Arc::clone(&proxhy_updating), ctx);
             spawn_gui_update_check(Arc::clone(&state));
-            Ok(Box::new(App::new(cc, state, log)))
+            Ok(Box::new(App::new(cc, state, proxhy_updating, log)))
         }),
     )
 }
