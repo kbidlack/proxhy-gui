@@ -25,3 +25,7 @@ serde_json = "1"
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
+
+[lints.clippy]
+nursery = "warn"
+pedantic = "warn"

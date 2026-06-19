@@ -13,7 +13,7 @@ use std::thread;
 use std::os::windows::process::CommandExt;
 
 // Suppress the console window that Windows opens for child processes.
-fn no_window(_cmd: &mut Command) {
+const fn no_window(_cmd: &mut Command) {
     #[cfg(windows)]
     _cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 }
@@ -93,7 +93,7 @@ impl LogLine {
         }
     }
 
-    fn color(&self) -> egui::Color32 {
+    const fn color(&self) -> egui::Color32 {
         match self.level {
             LogLevel::Error => egui::Color32::from_rgb(255, 85, 85),
             LogLevel::Warn => egui::Color32::from_rgb(255, 184, 76),
@@ -105,7 +105,7 @@ impl LogLine {
         }
     }
 
-    fn badge_text(&self) -> Option<&'static str> {
+    const fn badge_text(&self) -> Option<&'static str> {
         match self.level {
             LogLevel::Error => Some("ERR"),
             LogLevel::Warn => Some("WRN"),
@@ -380,7 +380,7 @@ impl App {
         }
     }
 
-    fn running(&self) -> bool {
+    const fn running(&self) -> bool {
         self.child.is_some()
     }
 
@@ -443,7 +443,7 @@ impl App {
         push_log(&self.log, "[gui] Stopped.", &self.ctx);
     }
 
-    fn line_passes_filter(&self, line: &LogLine) -> bool {
+    const fn line_passes_filter(&self, line: &LogLine) -> bool {
         match self.filter {
             LogFilter::All => true,
             LogFilter::InfoAndAbove => !matches!(
@@ -470,7 +470,7 @@ impl App {
         }
     }
 
-    fn show_update_banner(&mut self, ctx: &egui::Context) {
+    fn show_update_banner(&self, ctx: &egui::Context) {
         let state = self.update_state.lock().unwrap().clone();
         if state.gui_available.is_none() && state.error.is_none() {
             return;
@@ -615,6 +615,7 @@ impl eframe::App for App {
                         });
                         ui.add_space(1.0);
                     }
+                    drop(log);
 
                     ui.add_space(text_height);
                 });
