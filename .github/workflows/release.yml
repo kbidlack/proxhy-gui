@@ -59,8 +59,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p Proxhy.app/Contents/MacOS
+          mkdir -p Proxhy.app/Contents/Resources
           cp target/${{ matrix.target }}/release/proxhy-gui \
              Proxhy.app/Contents/MacOS/proxhy-gui
+          cp assets/icons/Proxhy.icns Proxhy.app/Contents/Resources/Proxhy.icns
           cat > Proxhy.app/Contents/Info.plist << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -68,6 +70,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>CFBundleExecutable</key>   <string>proxhy-gui</string>
+            <key>CFBundleIconFile</key>     <string>Proxhy</string>
             <key>CFBundleIdentifier</key>   <string>com.kbidlack.proxhy</string>
             <key>CFBundleName</key>         <string>Proxhy</string>
             <key>CFBundlePackageType</key>  <string>APPL</string>
@@ -107,18 +110,7 @@ jobs:
           Categories=Network;
           DESKTOP
 
-          python3 -c "
-          import struct, zlib
-          def chunk(t, d):
-              return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t+d)&0xffffffff)
-          row = b'\x00' + bytes([0x44,0x77,0xcc]*64)
-          data = zlib.compress(row * 64)
-          png = (b'\x89PNG\r\n\x1a\n'
-              + chunk(b'IHDR', struct.pack('>IIBBBBB', 64, 64, 8, 2, 0, 0, 0))
-              + chunk(b'IDAT', data)
-              + chunk(b'IEND', b''))
-          open('AppDir/proxhy-gui.png','wb').write(png)
-          "
+          cp assets/icons/Proxhy.png AppDir/proxhy-gui.png
 
           ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir Proxhy.AppImage
           tar -czf proxhy-gui-${{ matrix.target }}.tar.gz \
