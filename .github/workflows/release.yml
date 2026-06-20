@@ -70,7 +70,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>CFBundleExecutable</key>   <string>proxhy-gui</string>
-            <key>CFBundleIconFile</key>     <string>Proxhy</string>
+            <key>CFBundleIconFile</key>     <string>Proxhy.icns</string>
             <key>CFBundleIdentifier</key>   <string>com.kbidlack.proxhy</string>
             <key>CFBundleName</key>         <string>Proxhy</string>
             <key>CFBundlePackageType</key>  <string>APPL</string>
