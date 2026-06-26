@@ -133,11 +133,11 @@ fn push_log(log: &Arc<Mutex<VecDeque<LogLine>>>, raw: &str, ctx: &egui::Context)
 
 fn fetch_latest_proxhy_version() -> Result<String, String> {
     let client = reqwest::blocking::Client::builder()
-        .user_agent("proxhy-gui")
+        .user_agent("proxhy-launcher")
         .build()
         .map_err(|e| e.to_string())?;
     let resp: serde_json::Value = client
-        .get("https://api.github.com/repos/kbidlack/proxhy/releases/latest")
+        .get("https://api.github.com/repos/proxhyhq/proxhy/releases/latest")
         .send()
         .map_err(|e| e.to_string())?
         .json()
@@ -154,13 +154,13 @@ fn download_proxhy_binary(
     ctx: &egui::Context,
 ) -> Result<(), String> {
     let url = format!(
-        "https://github.com/kbidlack/proxhy/releases/download/v{version}/{PROXHY_BIN_NAME}"
+        "https://github.com/proxhyhq/proxhy/releases/download/v{version}/{PROXHY_BIN_NAME}"
     );
     let dest = proxhy_binary_path();
     push_log(log, &format!("[gui] Downloading {url}..."), ctx);
 
     let client = reqwest::blocking::Client::builder()
-        .user_agent("proxhy-gui")
+        .user_agent("proxhy-launcher")
         .build()
         .map_err(|e| e.to_string())?;
     let mut resp = client.get(&url).send().map_err(|e| e.to_string())?;
@@ -220,9 +220,9 @@ struct UpdateState {
 
 fn gui_updater() -> Result<Box<dyn ReleaseUpdate>, self_update::errors::Error> {
     self_update::backends::github::Update::configure()
-        .repo_owner("kbidlack")
-        .repo_name("proxhy-gui")
-        .bin_name("proxhy-gui")
+        .repo_owner("proxhyhq")
+        .repo_name("launcher")
+        .bin_name("launcher")
         .current_version(env!("CARGO_PKG_VERSION"))
         .no_confirm(true)
         .build()
@@ -322,7 +322,7 @@ fn apply_gui_update(
 ) {
     thread::spawn(move || {
         state.lock().unwrap().installing = true;
-        push_log(&log, "[gui] Updating proxhy-gui...", &ctx);
+        push_log(&log, "[gui] Updating proxhy-launcher...", &ctx);
         let result = gui_updater().and_then(|u| u.update());
         let mut s = state.lock().unwrap();
         s.installing = false;
@@ -506,7 +506,7 @@ impl App {
             .min_height(40.0)
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.heading("Proxhy");
+                    ui.heading("Proxhy Launcher");
                     ui.separator();
 
                     if self.running() {
@@ -646,14 +646,14 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Proxhy")
+            .with_title("Proxhy Launcher")
             .with_icon(icon_data)
             .with_inner_size([800.0, 500.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Proxhy",
+        "Proxhy Launcher",
         options,
         Box::new(move |cc| {
             let ctx = cc.egui_ctx.clone();

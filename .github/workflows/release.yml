@@ -58,21 +58,21 @@ jobs:
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
-          mkdir -p Proxhy.app/Contents/MacOS
-          mkdir -p Proxhy.app/Contents/Resources
-          cp target/${{ matrix.target }}/release/proxhy-gui \
-             Proxhy.app/Contents/MacOS/proxhy-gui
-          cp assets/icons/Proxhy.icns Proxhy.app/Contents/Resources/Proxhy.icns
-          cat > Proxhy.app/Contents/Info.plist << 'EOF'
+          mkdir -p "Proxhy Launcher.app/Contents/MacOS"
+          mkdir -p "Proxhy Launcher.app/Contents/Resources"
+          cp target/${{ matrix.target }}/release/proxhy-launcher \
+             "Proxhy Launcher.app/Contents/MacOS/proxhy-launcher"
+          cp assets/icons/Proxhy.icns "Proxhy Launcher.app/Contents/Resources/Proxhy.icns"
+          cat > "Proxhy Launcher.app/Contents/Info.plist" << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>CFBundleExecutable</key>   <string>proxhy-gui</string>
+            <key>CFBundleExecutable</key>   <string>proxhy-launcher</string>
             <key>CFBundleIconFile</key>     <string>Proxhy.icns</string>
-            <key>CFBundleIdentifier</key>   <string>com.kbidlack.proxhy</string>
-            <key>CFBundleName</key>         <string>Proxhy</string>
+            <key>CFBundleIdentifier</key>   <string>com.proxhy</string>
+            <key>CFBundleName</key>         <string>Proxhy Launcher</string>
             <key>CFBundlePackageType</key>  <string>APPL</string>
             <key>CFBundleShortVersionString</key> <string>${{ github.ref_name }}</string>
             <key>NSHighResolutionCapable</key>    <true/>
@@ -80,9 +80,9 @@ jobs:
           </dict>
           </plist>
           EOF
-          zip -r Proxhy.zip Proxhy.app
-          tar -czf proxhy-gui-${{ matrix.target }}.tar.gz \
-            -C target/${{ matrix.target }}/release proxhy-gui
+          zip -r "Proxhy Launcher.zip" "Proxhy Launcher.app"
+          tar -czf proxhy-launcher-${{ matrix.target }}.tar.gz \
+            -C target/${{ matrix.target }}/release proxhy-launcher
 
       - name: Package Linux
         if: runner.os == 'Linux'
@@ -93,45 +93,45 @@ jobs:
           chmod +x appimagetool-x86_64.AppImage
 
           mkdir -p AppDir/usr/bin
-          cp target/${{ matrix.target }}/release/proxhy-gui AppDir/usr/bin/
+          cp target/${{ matrix.target }}/release/proxhy-launcher AppDir/usr/bin/
 
           cat > AppDir/AppRun << 'APPRUN'
           #!/bin/sh
-          exec "$(dirname "$0")/usr/bin/proxhy-gui" "$@"
+          exec "$(dirname "$0")/usr/bin/proxhy-launcher" "$@"
           APPRUN
           chmod +x AppDir/AppRun
 
-          cat > AppDir/proxhy-gui.desktop << 'DESKTOP'
+          cat > AppDir/proxhy-launcher.desktop << 'DESKTOP'
           [Desktop Entry]
-          Name=Proxhy
-          Exec=proxhy-gui
-          Icon=proxhy-gui
+          Name=Proxhy Launcher
+          Exec=proxhy-launcher
+          Icon=proxhy-launcher
           Type=Application
           Categories=Network;
           DESKTOP
 
-          cp assets/icons/Proxhy.png AppDir/proxhy-gui.png
+          cp assets/icons/Proxhy.png AppDir/proxhy-launcher.png
 
           ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir Proxhy.AppImage
-          tar -czf proxhy-gui-${{ matrix.target }}.tar.gz \
-            -C target/${{ matrix.target }}/release proxhy-gui
+          tar -czf proxhy-launcher-${{ matrix.target }}.tar.gz \
+            -C target/${{ matrix.target }}/release proxhy-launcher
 
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cp target\${{ matrix.target }}\release\proxhy-gui.exe Proxhy.exe
+          cp target\${{ matrix.target }}\release\proxhy-launcher.exe "Proxhy Launcher.exe"
           Compress-Archive `
-            -Path target\${{ matrix.target }}\release\proxhy-gui.exe `
-            -DestinationPath proxhy-gui-${{ matrix.target }}.zip
+            -Path target\${{ matrix.target }}\release\proxhy-launcher.exe `
+            -DestinationPath proxhy-launcher-${{ matrix.target }}.zip
 
       - name: Upload macOS
         if: runner.os == 'macOS'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Proxhy.zip
-            proxhy-gui-${{ matrix.target }}.tar.gz
+            Proxhy Launcher.zip
+            proxhy-launcher-${{ matrix.target }}.tar.gz
 
       - name: Upload Linux
         if: runner.os == 'Linux'
@@ -139,12 +139,12 @@ jobs:
         with:
           files: |
             Proxhy.AppImage
-            proxhy-gui-${{ matrix.target }}.tar.gz
+            proxhy-launcher-${{ matrix.target }}.tar.gz
 
       - name: Upload Windows
         if: runner.os == 'Windows'
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Proxhy.exe
-            proxhy-gui-${{ matrix.target }}.zip
+            Proxhy Launcher.exe
+            proxhy-launcher-${{ matrix.target }}.zip
