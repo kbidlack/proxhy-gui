@@ -58,12 +58,12 @@ jobs:
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
-          mkdir -p "Proxhy Launcher.app/Contents/MacOS"
-          mkdir -p "Proxhy Launcher.app/Contents/Resources"
+          mkdir -p "Proxhy.app/Contents/MacOS"
+          mkdir -p "Proxhy.app/Contents/Resources"
           cp target/${{ matrix.target }}/release/proxhy-launcher \
-             "Proxhy Launcher.app/Contents/MacOS/proxhy-launcher"
-          cp assets/icons/Proxhy.icns "Proxhy Launcher.app/Contents/Resources/Proxhy.icns"
-          cat > "Proxhy Launcher.app/Contents/Info.plist" << 'EOF'
+             "Proxhy.app/Contents/MacOS/proxhy-launcher"
+          cp assets/icons/Proxhy.icns "Proxhy.app/Contents/Resources/Proxhy.icns"
+          cat > "Proxhy.app/Contents/Info.plist" << 'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
             "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -72,7 +72,7 @@ jobs:
             <key>CFBundleExecutable</key>   <string>proxhy-launcher</string>
             <key>CFBundleIconFile</key>     <string>Proxhy.icns</string>
             <key>CFBundleIdentifier</key>   <string>com.proxhy</string>
-            <key>CFBundleName</key>         <string>Proxhy Launcher</string>
+            <key>CFBundleName</key>         <string>Proxhy</string>
             <key>CFBundlePackageType</key>  <string>APPL</string>
             <key>CFBundleShortVersionString</key> <string>${{ github.ref_name }}</string>
             <key>NSHighResolutionCapable</key>    <true/>
@@ -80,7 +80,7 @@ jobs:
           </dict>
           </plist>
           EOF
-          zip -r "Proxhy Launcher.zip" "Proxhy Launcher.app"
+          zip -r "Proxhy.zip" "Proxhy.app"
           tar -czf proxhy-launcher-${{ matrix.target }}.tar.gz \
             -C target/${{ matrix.target }}/release proxhy-launcher
 
@@ -103,7 +103,7 @@ jobs:
 
           cat > AppDir/proxhy-launcher.desktop << 'DESKTOP'
           [Desktop Entry]
-          Name=Proxhy Launcher
+          Name=Proxhy
           Exec=proxhy-launcher
           Icon=proxhy-launcher
           Type=Application
@@ -120,7 +120,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cp target\${{ matrix.target }}\release\proxhy-launcher.exe "Proxhy Launcher.exe"
+          cp target\${{ matrix.target }}\release\proxhy-launcher.exe "Proxhy.exe"
           Compress-Archive `
             -Path target\${{ matrix.target }}\release\proxhy-launcher.exe `
             -DestinationPath proxhy-launcher-${{ matrix.target }}.zip
@@ -130,7 +130,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Proxhy Launcher.zip
+            Proxhy.zip
             proxhy-launcher-${{ matrix.target }}.tar.gz
 
       - name: Upload Linux
@@ -146,5 +146,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Proxhy Launcher.exe
+            Proxhy.exe
             proxhy-launcher-${{ matrix.target }}.zip

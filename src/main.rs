@@ -506,7 +506,7 @@ impl App {
             .min_height(40.0)
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.heading("Proxhy Launcher");
+                    ui.heading("Proxhy");
                     ui.separator();
 
                     if self.running() {
@@ -646,14 +646,14 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Proxhy Launcher")
+            .with_title("Proxhy")
             .with_icon(icon_data)
             .with_inner_size([800.0, 500.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Proxhy Launcher",
+        "Proxhy",
         options,
         Box::new(move |cc| {
             let ctx = cc.egui_ctx.clone();
